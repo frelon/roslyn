@@ -639,5 +639,57 @@ class C
 @"string x; if (x.Length <= 0.0f) { EqualsZero(); } else { GreaterThanZero(); }
     } } ");
         }
+
+        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
+        public async Task TestElselessIfStatement_Foreach()
+        {
+            await TestInRegularAndScriptAsync(
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            [||]if (c)
+            f();
+        }
+    }
+}",
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            if (!c)
+                continue;
+            f();
+        }
+    }
+}");
+        }
+
+        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
+        public async Task TestElselessIfStatement_Method()
+        {
+            await TestInRegularAndScriptAsync(
+@"class C
+{
+    void M()
+    {
+        [||]if (c)
+        f();
+    }
+}",
+@"class C
+{
+    void M()
+    {
+        [||]if (!c)
+            return;
+        f();
+    }
+}");
+        }
     }
 }

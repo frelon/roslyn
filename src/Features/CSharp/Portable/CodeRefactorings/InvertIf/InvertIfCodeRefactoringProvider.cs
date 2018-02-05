@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,15 +20,15 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
     // [ExportCodeRefactoringProvider(LanguageNames.CSharp, Name = PredefinedCodeRefactoringProviderNames.InvertIf)]
     internal partial class InvertIfCodeRefactoringProvider : CodeRefactoringProvider
     {
-        private static readonly Dictionary<SyntaxKind, Tuple<SyntaxKind, SyntaxKind>> s_binaryMap =
-            new Dictionary<SyntaxKind, Tuple<SyntaxKind, SyntaxKind>>(SyntaxFacts.EqualityComparer)
+        private static readonly Dictionary<SyntaxKind, (SyntaxKind, SyntaxKind)> s_binaryMap =
+            new Dictionary<SyntaxKind, (SyntaxKind, SyntaxKind)>(SyntaxFacts.EqualityComparer)
                 {
-                    { SyntaxKind.EqualsExpression, Tuple.Create(SyntaxKind.NotEqualsExpression, SyntaxKind.ExclamationEqualsToken) },
-                    { SyntaxKind.NotEqualsExpression, Tuple.Create(SyntaxKind.EqualsExpression, SyntaxKind.EqualsEqualsToken) },
-                    { SyntaxKind.LessThanExpression, Tuple.Create(SyntaxKind.GreaterThanOrEqualExpression, SyntaxKind.GreaterThanEqualsToken) },
-                    { SyntaxKind.LessThanOrEqualExpression, Tuple.Create(SyntaxKind.GreaterThanExpression, SyntaxKind.GreaterThanToken) },
-                    { SyntaxKind.GreaterThanExpression, Tuple.Create(SyntaxKind.LessThanOrEqualExpression, SyntaxKind.LessThanEqualsToken) },
-                    { SyntaxKind.GreaterThanOrEqualExpression, Tuple.Create(SyntaxKind.LessThanExpression, SyntaxKind.LessThanToken) },
+                    { SyntaxKind.EqualsExpression, (SyntaxKind.NotEqualsExpression, SyntaxKind.ExclamationEqualsToken) },
+                    { SyntaxKind.NotEqualsExpression, (SyntaxKind.EqualsExpression, SyntaxKind.EqualsEqualsToken) },
+                    { SyntaxKind.LessThanExpression, (SyntaxKind.GreaterThanOrEqualExpression, SyntaxKind.GreaterThanEqualsToken) },
+                    { SyntaxKind.LessThanOrEqualExpression, (SyntaxKind.GreaterThanExpression, SyntaxKind.GreaterThanToken) },
+                    { SyntaxKind.GreaterThanExpression, (SyntaxKind.LessThanOrEqualExpression, SyntaxKind.LessThanEqualsToken) },
+                    { SyntaxKind.GreaterThanOrEqualExpression, (SyntaxKind.LessThanExpression, SyntaxKind.LessThanToken) },
                 };
 
         public override async Task ComputeRefactoringsAsync(CodeRefactoringContext context)
@@ -48,7 +49,7 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
 
             var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
             var ifStatement = root.FindToken(textSpan.Start).GetAncestor<IfStatementSyntax>();
-            if (ifStatement == null || ifStatement.Else == null)
+            if (ifStatement == null)
             {
                 return;
             }
@@ -63,16 +64,112 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                 return;
             }
 
+            var invertedIfBody = SyntaxKind.None;
+            if (ifStatement.Else == null)
+            {
+                var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+                if (!CanInvertElselessIf())
+                {
+                    return;
+                }
+
+                bool CanInvertElselessIf()
+                {
+                    var controlFlow = semanticModel.AnalyzeControlFlow(ifStatement.Statement);
+                    return !controlFlow.EndPointIsReachable || (invertedIfBody = GetInvertedIfGeneretedBody()) != default;
+
+                    SyntaxKind GetInvertedIfGeneretedBody()
+                    {
+                        // Check if this is the only statement in a branching statement or anonymous function or member
+                        foreach (var node in ifStatement.Ancestors())
+                        {
+                            switch (node.Kind())
+                            {
+                                case SyntaxKind.Block when ((BlockSyntax)node).Statements.Count != 1:
+                                    return default;
+                                case SyntaxKind.SwitchSection:
+                                    return SyntaxKind.BreakStatement;
+                                case SyntaxKind.LocalFunctionStatement:
+                                    return SyntaxKind.ReturnStatement;
+                                case SyntaxKind.DoStatement:
+                                case SyntaxKind.WhileStatement:
+                                case SyntaxKind.ForStatement:
+                                case SyntaxKind.ForEachStatement:
+                                case SyntaxKind.ForEachVariableStatement:
+                                    return SyntaxKind.ContinueStatement;
+                            }
+
+                            if (node is AccessorDeclarationSyntax || 
+                                node is BaseMethodDeclarationSyntax ||
+                                node is AnonymousFunctionExpressionSyntax)
+                            {
+                                return SyntaxKind.ReturnStatement;
+                            }
+                        }
+
+                        return default;
+                    }
+                }
+            }
+
             context.RegisterRefactoring(
                 new MyCodeAction(
                     CSharpFeaturesResources.Invert_if_statement,
-                    c => InvertIfAsync(document, ifStatement, c)));
+                    c => InvertIfAsync(document, ifStatement, invertedIfBody, c)));
         }
 
-        private async Task<Document> InvertIfAsync(Document document, IfStatementSyntax ifStatement, CancellationToken cancellationToken)
+        private async Task<Document> InvertIfAsync(Document document, IfStatementSyntax ifStatement, SyntaxKind invertedIfBody, CancellationToken cancellationToken)
         {
             var tree = await document.GetSyntaxTreeAsync(cancellationToken).ConfigureAwait(false);
+            var root = await tree.GetRootAsync(cancellationToken).ConfigureAwait(false);
+
             var ifNode = ifStatement;
+
+            var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+            var negatedCondition = Negate(ifNode.Condition, semanticModel, cancellationToken);
+
+            if (ifNode.Else == null)
+            {
+                var newIfStatementBody = GetIfStatementBody();
+                var newIfStatement = ifNode.WithCondition(negatedCondition)
+                          .WithStatement(newIfStatementBody);
+
+                var currentIfParent = ifNode.Parent;
+                var updatedIfParent = GetNewBlockWithInvertedIf();
+
+                return document.WithSyntaxRoot(root.ReplaceNode(currentIfParent, updatedIfParent));
+
+                SyntaxNode GetNewBlockWithInvertedIf()
+                {
+                    // TODO handle embedded statements
+                    switch (currentIfParent)
+                    {
+                        case BlockSyntax block:
+                            return SyntaxFactory.Block(newIfStatement, ifNode.Statement);
+                        case SwitchSectionSyntax switchSection:
+                            throw new NotImplementedException();
+                        default:
+                            throw ExceptionUtilities.UnexpectedValue(currentIfParent.Kind());
+                    }
+                }
+
+                StatementSyntax GetIfStatementBody()
+                {
+                    switch (invertedIfBody)
+                    {
+                        case SyntaxKind.None:
+                            throw new NotImplementedException();
+                        case SyntaxKind.ContinueStatement:
+                            return SyntaxFactory.ContinueStatement();
+                        case SyntaxKind.ReturnStatement:
+                            return SyntaxFactory.ReturnStatement();
+                        case SyntaxKind.BreakStatement:
+                            return SyntaxFactory.BreakStatement();
+                        default:
+                            throw ExceptionUtilities.UnexpectedValue(invertedIfBody);
+                    }
+                }
+            }
 
             // In the case that the else clause is actually an else if clause, place the if
             // statement to be moved in a new block in order to make sure that the else
@@ -81,14 +178,11 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                 SyntaxFactory.Block(ifNode.Else.Statement) :
                 ifNode.Else.Statement;
 
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+            var invertedIf = ifNode.WithCondition(negatedCondition)
+                        .WithStatement(newIfNodeStatement)
+                        .WithElse(ifNode.Else.WithStatement(ifNode.Statement))
+                        .WithAdditionalAnnotations(Formatter.Annotation);
 
-            var invertedIf = ifNode.WithCondition(Negate(ifNode.Condition, semanticModel, cancellationToken))
-                      .WithStatement(newIfNodeStatement)
-                      .WithElse(ifNode.Else.WithStatement(ifNode.Statement))
-                      .WithAdditionalAnnotations(Formatter.Annotation);
-
-            var root = await tree.GetRootAsync(cancellationToken).ConfigureAwait(false);
             var result = root.ReplaceNode(ifNode, invertedIf);
             return document.WithSyntaxRoot(result);
         }
