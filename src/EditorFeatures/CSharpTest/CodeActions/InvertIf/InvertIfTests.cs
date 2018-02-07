@@ -641,7 +641,7 @@ class C
         }
 
         [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
-        public async Task TestElselessIfStatement_Foreach()
+        public async Task Test01()
         {
             await TestInRegularAndScriptAsync(
 @"class C
@@ -651,7 +651,9 @@ class C
         foreach (var item in list)
         {
             [||]if (c)
-            f();
+            {
+                f();
+            }
         }
     }
 }",
@@ -662,7 +664,10 @@ class C
         foreach (var item in list)
         {
             if (!c)
+            {
                 continue;
+            }
+
             f();
         }
     }
@@ -670,24 +675,132 @@ class C
         }
 
         [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
-        public async Task TestElselessIfStatement_Method()
+        public async Task Test02()
         {
             await TestInRegularAndScriptAsync(
 @"class C
 {
     void M()
     {
-        [||]if (c)
-        f();
+        foreach (var item in list)
+        {
+            [||]if (!c)
+            {
+                continue;
+            }
+            f();
+        }
     }
 }",
 @"class C
 {
     void M()
     {
-        [||]if (!c)
+        foreach (var item in list)
+        {
+            if (c)
+            {
+                f();
+            }
+        }
+    }
+}");
+        }
+
+        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
+        public async Task Test03()
+        {
+            await TestInRegularAndScriptAsync(
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            [||]if (c)
+                break;
             return;
-        f();
+        }
+    }
+}",
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            if (!c)
+                return;
+            break;
+        }
+    }
+}");
+        }
+
+        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
+        public async Task Test04()
+        {
+            await TestInRegularAndScriptAsync(
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            [||]if (!c)
+            {
+                return;
+            }
+            break;
+        }
+    }
+}",
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            if (c)
+            {
+                break;
+            }
+            return;
+        }
+    }
+}");
+        }
+
+        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
+        public async Task Test05()
+        {
+            await TestInRegularAndScriptAsync(
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            [||]if (true)
+            {
+                return;
+            }
+            M();
+        }
+    }
+}",
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            if (false)
+            {
+                M();
+            }
+            return;
+        }
     }
 }");
         }
