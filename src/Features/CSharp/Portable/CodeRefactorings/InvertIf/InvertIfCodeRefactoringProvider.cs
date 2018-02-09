@@ -106,8 +106,9 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                     var exitPoints = ifControlFlow.ExitPoints;
                     if (exitPoints.Length != 1 || exitPoints[0].Kind() != (SyntaxKind)result)
                     {
-                        // Bail if the jump statement does not correspond to the nearmost loop or switch
-                        return InvertIfStyle.None;
+                        // If the jump statement does not correspond to the nearmost loop or switch,
+                        // we need to introduce an else clause.
+                        return InvertIfStyle.WithElseClause;
                     }
                     else
                     {
@@ -210,10 +211,14 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                     }
 
                 case InvertIfStyle.WithReturnStatement:
+                    return InvertIfWith(SyntaxFactory.ReturnStatement());
                 case InvertIfStyle.WithContinueStatement:
+                    return InvertIfWith(SyntaxFactory.ContinueStatement());
                 case InvertIfStyle.WithBreakStatement:
+                    return InvertIfWith(SyntaxFactory.BreakStatement());
+
+                    Document InvertIfWith(StatementSyntax newIfBody)
                     {
-                        var newIfBody = GetIfStatementBody();
                         var updatedIf = ifNode.WithCondition(negatedCondition)
                             .WithStatement(SyntaxFactory.Block(newIfBody));
 
@@ -227,21 +232,6 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                             .WithAdditionalAnnotations(Formatter.Annotation);
 
                         return document.WithSyntaxRoot(root.ReplaceNode(currentParent, updatedParent));
-
-                        StatementSyntax GetIfStatementBody()
-                        {
-                            switch (invertIfStyle)
-                            {
-                                case InvertIfStyle.WithContinueStatement:
-                                    return SyntaxFactory.ContinueStatement();
-                                case InvertIfStyle.WithReturnStatement:
-                                    return SyntaxFactory.ReturnStatement();
-                                case InvertIfStyle.WithBreakStatement:
-                                    return SyntaxFactory.BreakStatement();
-                                default:
-                                    throw ExceptionUtilities.UnexpectedValue(invertIfStyle);
-                            }
-                        }
                     }
 
                 case InvertIfStyle.MoveSubsequentStatements:
@@ -264,7 +254,25 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                     }
 
                 case InvertIfStyle.WithElseClause:
-                    throw new NotImplementedException();
+                    {
+                        var currentParent = ifNode.Parent;
+                        var statements = GetStatements(currentParent);
+                        var index = statements.IndexOf(ifNode);
+
+                        var statementsBeforeIf = statements.Take(index);
+                        var statementsAfterIf = statements.Skip(index + 1).ToArray();
+
+                        var updatedIf = ifNode
+                             .WithCondition(negatedCondition)
+                             .WithStatement(ReplaceEmbeddedStatement(ifNode.Statement, statementsAfterIf))
+                             .WithElse(SyntaxFactory.ElseClause(ifNode.Statement));
+
+                        var updatedParent = SyntaxFactory.Block(statementsBeforeIf.Concat(updatedIf))
+                            .WithAdditionalAnnotations(Formatter.Annotation);
+
+                        return document.WithSyntaxRoot(root.ReplaceNode(currentParent, updatedParent));
+                    }
+
                 default:
                     throw ExceptionUtilities.UnexpectedValue(invertIfStyle);
             }

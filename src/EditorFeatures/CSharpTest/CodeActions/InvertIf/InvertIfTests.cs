@@ -643,7 +643,7 @@ class C
         [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
         public async Task Test01()
         {
-            await TestMissingAsync(
+            await TestInRegularAndScriptAsync(
 @"class C
 {
     void M()
@@ -651,11 +651,21 @@ class C
         foreach (var item in list)
         {
             [||]if (!c)
-            {
                 return;
-            }
-
             f();
+        }
+    }
+}",
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            if (c)
+                f();
+            else
+                return;
         }
     }
 }");
