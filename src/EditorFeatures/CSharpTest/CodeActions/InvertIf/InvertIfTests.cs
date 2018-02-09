@@ -675,6 +675,72 @@ class C
         }
 
         [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
+        public async Task Test06()
+        {
+            await TestInRegularAndScriptAsync(
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            {
+                [||]if (c)
+                {
+                    f();
+                }
+            }
+        }
+    }
+}",
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            {
+                if (!c)
+                {
+                    continue;
+                }
+
+                f();
+            }
+        }
+    }
+}");
+        }
+
+        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
+        public async Task Test07()
+        {
+            await TestInRegularAndScriptAsync(
+@"class C
+{
+    void M()
+    {
+        [||]if (c)
+        {
+            f();
+        }
+    }
+}",
+@"class C
+{
+    void M()
+    {
+        if (!c)
+        {
+            return;
+        }
+
+        f();
+    }
+}");
+        }
+
+        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
         public async Task Test02()
         {
             await TestInRegularAndScriptAsync(
