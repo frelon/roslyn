@@ -119,20 +119,18 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
 
                 InvertIfStyle GetInvertIfStyleFromContext()
                 {
-                    StatementSyntax innerStatement = ifStatement;
+                    SyntaxNode innerStatement = ifStatement;
                     foreach (var node in ifStatement.Ancestors())
                     {
                         switch (node.Kind())
                         {
                             case SyntaxKind.Block:
-                                var block = (BlockSyntax)node;
-
                                 // Skip all blocks with no subsequent statements, except for
                                 // the innermost block that is the parent of the if-statement.
-                                if (innerStatement == block.Statements.Last() ||
-                                    innerStatement.Kind() == SyntaxKind.IfStatement)
+                                if (innerStatement.Kind() == SyntaxKind.IfStatement ||
+                                    innerStatement == ((BlockSyntax)node).Statements.Last())
                                 {
-                                    innerStatement = block;
+                                    innerStatement = node;
                                     continue;
                                 }
 
