@@ -101,17 +101,22 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                 }
 
                 var result = GetInvertIfStyleFromContext();
-
-                //if (ifHasUnreachableEnd)
-                //{
-                //    var exitPoints = ifControlFlow.ExitPoints;
-                //    if (exitPoints.Length != 1 || exitPoints[0].RawKind != (int)result)
-                //    {
-                //        return InvertIfStyle.None;
-                //    }
-                //}
+                if (result != InvertIfStyle.None && ifHasUnreachableEnd)
+                {
+                    var exitPoints = ifControlFlow.ExitPoints;
+                    if (exitPoints.Length != 1 || exitPoints[0].Kind() != (SyntaxKind)result)
+                    {
+                        // Bail if the jump statement does not correspond to the nearmost loop or switch
+                        return InvertIfStyle.None;
+                    }
+                    else
+                    {
+                        return InvertIfStyle.MoveSubsequentStatements;
+                    }
+                }
 
                 return result;
+
                 InvertIfStyle GetInvertIfStyleFromContext()
                 {
                     StatementSyntax innerStatement = ifStatement;
@@ -133,30 +138,22 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
 
                                 return InvertIfStyle.None;
                             case SyntaxKind.SwitchSection:
-                                return ifHasUnreachableEnd
-                                    ? InvertIfStyle.MoveSubsequentStatements
-                                    : InvertIfStyle.WithBreakStatement;
+                                return InvertIfStyle.WithBreakStatement;
                             case SyntaxKind.LocalFunctionStatement:
-                                return ifHasUnreachableEnd
-                                    ? InvertIfStyle.MoveSubsequentStatements
-                                    : InvertIfStyle.WithReturnStatement;
+                                return InvertIfStyle.WithReturnStatement;
                             case SyntaxKind.DoStatement:
                             case SyntaxKind.WhileStatement:
                             case SyntaxKind.ForStatement:
                             case SyntaxKind.ForEachStatement:
                             case SyntaxKind.ForEachVariableStatement:
-                                return ifHasUnreachableEnd
-                                    ? InvertIfStyle.MoveSubsequentStatements
-                                    : InvertIfStyle.WithContinueStatement;
+                                return InvertIfStyle.WithContinueStatement;
                         }
 
                         if (node is AccessorDeclarationSyntax ||
                             node is BaseMethodDeclarationSyntax ||
                             node is AnonymousFunctionExpressionSyntax)
                         {
-                            return ifHasUnreachableEnd
-                                ? InvertIfStyle.MoveSubsequentStatements
-                                : InvertIfStyle.WithReturnStatement;
+                            return InvertIfStyle.WithReturnStatement;
                         }
                     }
 
@@ -282,6 +279,11 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
 
         private static StatementSyntax ReplaceEmbeddedStatement(StatementSyntax statement, StatementSyntax[] statements)
         {
+            if (statements.Length > 0)
+            {
+                statements[0] = statements[0].WithoutLeadingTrivia();
+            }
+
             return statement is BlockSyntax block
                 ? block.WithStatements(SyntaxFactory.List(statements))
                 : statements.Length == 1 ? statements[0] : SyntaxFactory.Block(statements);
