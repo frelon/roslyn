@@ -156,8 +156,8 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                         }
                     }
 
-                        return InvertIfStyle.None;
-                    }
+                    return InvertIfStyle.None;
+                }
             }
         }
 
