@@ -84,7 +84,8 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                     return InvertIfStyle.Normal;
                 }
 
-                if (!ifStatement.Parent.IsKind(SyntaxKind.Block, out BlockSyntax parentBlock))
+                var parentStatements = GetStatements(ifStatement.Parent);
+                if (parentStatements == default)
                 {
                     return InvertIfStyle.None;
                 }
@@ -92,7 +93,7 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                 var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
                 var ifControlFlow = semanticModel.AnalyzeControlFlow(ifStatement.Statement);
                 var ifHasUnreachableEnd = !ifControlFlow.EndPointIsReachable;
-                var followingControlFlow = semanticModel.AnalyzeControlFlow(ifStatement, parentBlock.Statements.Last());
+                var followingControlFlow = semanticModel.AnalyzeControlFlow(ifStatement, parentStatements.Last());
                 var followingHasUnreachableEnd = !followingControlFlow.EndPointIsReachable;
 
                 if (ifHasUnreachableEnd && followingHasUnreachableEnd)
@@ -137,7 +138,15 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
 
                                 return InvertIfStyle.None;
                             case SyntaxKind.SwitchSection:
-                                return InvertIfStyle.WithBreakStatement;
+                                var statements = ((SwitchSectionSyntax)node).Statements;
+                                var lastStatement = statements.Last();
+                                if (lastStatement.Kind() == SyntaxKind.BreakStatement ||
+                                    lastStatement == innerStatement)
+                                {
+                                    return InvertIfStyle.WithBreakStatement;
+                                }
+
+                                return InvertIfStyle.None;
                             case SyntaxKind.LocalFunctionStatement:
                                 return InvertIfStyle.WithReturnStatement;
                             case SyntaxKind.DoStatement:
@@ -204,7 +213,7 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                             .WithCondition(negatedCondition)
                             .WithStatement(ReplaceEmbeddedStatement(ifNode.Statement, statementsAfterIf));
 
-                        var updatedParent = SyntaxFactory.Block(statementsBeforeIf.Concat(updatedIf).Concat(UnwrapBlock(ifBody)))
+                        var updatedParent = WithStatements(currentParent, statementsBeforeIf.Concat(updatedIf).Concat(UnwrapBlock(ifBody)))
                             .WithAdditionalAnnotations(Formatter.Annotation);
 
                         return document.WithSyntaxRoot(root.ReplaceNode(currentParent, updatedParent));
@@ -228,7 +237,7 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
 
                         var statementsBeforeIf = statements.Take(index);
 
-                        var updatedParent = SyntaxFactory.Block(statementsBeforeIf.Concat(updatedIf).Concat(UnwrapBlock(ifNode.Statement)))
+                        var updatedParent = WithStatements(currentParent, statementsBeforeIf.Concat(updatedIf).Concat(UnwrapBlock(ifNode.Statement)))
                             .WithAdditionalAnnotations(Formatter.Annotation);
 
                         return document.WithSyntaxRoot(root.ReplaceNode(currentParent, updatedParent));
@@ -247,7 +256,7 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                              .WithCondition(negatedCondition)
                              .WithStatement(ReplaceEmbeddedStatement(ifNode.Statement, statementsAfterIf));
 
-                        var updatedParent = SyntaxFactory.Block(statementsBeforeIf.Concat(updatedIf))
+                        var updatedParent = WithStatements(currentParent, statementsBeforeIf.Concat(updatedIf))
                             .WithAdditionalAnnotations(Formatter.Annotation);
 
                         return document.WithSyntaxRoot(root.ReplaceNode(currentParent, updatedParent));
@@ -267,7 +276,7 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                              .WithStatement(ReplaceEmbeddedStatement(ifNode.Statement, statementsAfterIf))
                              .WithElse(SyntaxFactory.ElseClause(ifNode.Statement));
 
-                        var updatedParent = SyntaxFactory.Block(statementsBeforeIf.Concat(updatedIf))
+                        var updatedParent = WithStatements(currentParent, statementsBeforeIf.Concat(updatedIf))
                             .WithAdditionalAnnotations(Formatter.Annotation);
 
                         return document.WithSyntaxRoot(root.ReplaceNode(currentParent, updatedParent));
@@ -303,6 +312,19 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                     return n.Statements;
                 case SwitchSectionSyntax n:
                     return n.Statements;
+                default:
+                    throw ExceptionUtilities.UnexpectedValue(node.Kind());
+            }
+        }
+
+        private static SyntaxNode WithStatements(SyntaxNode node, IEnumerable<SyntaxNode> statements)
+        {
+            switch (node)
+            {
+                case BlockSyntax n:
+                    return n.WithStatements(SyntaxFactory.List(statements));
+                case SwitchSectionSyntax n:
+                    return n.WithStatements(SyntaxFactory.List(statements));
                 default:
                     throw ExceptionUtilities.UnexpectedValue(node.Kind());
             }

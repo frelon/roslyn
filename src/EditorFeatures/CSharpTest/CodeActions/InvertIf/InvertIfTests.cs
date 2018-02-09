@@ -672,72 +672,6 @@ class C
         }
 
         [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
-        public async Task Test06()
-        {
-            await TestInBothDirections(
-@"class C
-{
-    void M()
-    {
-        foreach (var item in list)
-        {
-            {
-                [||]if (c)
-                {
-                    f();
-                }
-            }
-        }
-    }
-}",
-@"class C
-{
-    void M()
-    {
-        foreach (var item in list)
-        {
-            {
-                [||]if (!c)
-                {
-                    continue;
-                }
-
-                f();
-            }
-        }
-    }
-}");
-        }
-
-        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
-        public async Task Test07()
-        {
-            await TestInBothDirections(
-@"class C
-{
-    void M()
-    {
-        [||]if (c)
-        {
-            f();
-        }
-    }
-}",
-@"class C
-{
-    void M()
-    {
-        [||]if (!c)
-        {
-            return;
-        }
-
-        f();
-    }
-}");
-        }
-
-        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
         public async Task Test02()
         {
             await TestInBothDirections(
@@ -864,6 +798,110 @@ class C
                 M();
             }
             return;
+        }
+    }
+}");
+        }
+
+        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
+        public async Task Test06()
+        {
+            await TestInBothDirections(
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            {
+                [||]if (c)
+                {
+                    f();
+                }
+            }
+        }
+    }
+}",
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            {
+                [||]if (!c)
+                {
+                    continue;
+                }
+
+                f();
+            }
+        }
+    }
+}");
+        }
+
+        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
+        public async Task Test07()
+        {
+            await TestInBothDirections(
+@"class C
+{
+    void M()
+    {
+        [||]if (c)
+        {
+            f();
+        }
+    }
+}",
+@"class C
+{
+    void M()
+    {
+        [||]if (!c)
+        {
+            return;
+        }
+
+        f();
+    }
+}");
+        }
+
+        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
+        public async Task Test08()
+        {
+            await TestInRegularAndScriptAsync(
+@"class C
+{
+    void M()
+    {
+        switch (o)
+        {
+            case 1:
+                [||]if (c)
+                {
+                    f();
+                }
+                break;
+        }
+    }
+}",
+@"class C
+{
+    void M()
+    {
+        switch (o)
+        {
+            case 1:
+                [||]if (!c)
+                {
+                    break;
+                }
+
+                f();
+                break;
         }
     }
 }");
