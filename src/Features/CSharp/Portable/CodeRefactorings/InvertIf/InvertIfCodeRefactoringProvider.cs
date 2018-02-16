@@ -91,20 +91,20 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                 }
 
                 var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
-                var ifControlFlow = semanticModel.AnalyzeControlFlow(ifStatement.Statement);
-                var ifHasUnreachableEnd = !ifControlFlow.EndPointIsReachable;
-                var followingControlFlow = semanticModel.AnalyzeControlFlow(ifStatement, parentStatements.Last());
-                var followingHasUnreachableEnd = !followingControlFlow.EndPointIsReachable;
+                var ifStatementControlFlow = semanticModel.AnalyzeControlFlow(ifStatement.Statement);
+                var parentBlockControlFlow = semanticModel.AnalyzeControlFlow(ifStatement, parentStatements.Last());
+                var ifStatementHasUnreachableEndPoint = !ifStatementControlFlow.EndPointIsReachable;
+                var parentBlockHasUnreachableEndPoint = !parentBlockControlFlow.EndPointIsReachable;
 
-                if (ifHasUnreachableEnd && followingHasUnreachableEnd)
+                if (ifStatementHasUnreachableEndPoint && parentBlockHasUnreachableEndPoint)
                 {
                     return InvertIfStyle.ReplaceSubsequentStatements;
                 }
 
                 var result = GetInvertIfStyleFromContext();
-                if (result != InvertIfStyle.None && ifHasUnreachableEnd)
+                if (result != InvertIfStyle.None && ifStatementHasUnreachableEndPoint)
                 {
-                    var exitPoints = ifControlFlow.ExitPoints;
+                    var exitPoints = ifStatementControlFlow.ExitPoints;
                     if (exitPoints.Length != 1 || exitPoints[0].Kind() != (SyntaxKind)result)
                     {
                         // If the jump statement does not correspond to the nearmost loop or switch,
@@ -137,31 +137,38 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                                 }
 
                                 return InvertIfStyle.None;
+
                             case SyntaxKind.SwitchSection:
                                 var statements = ((SwitchSectionSyntax)node).Statements;
-                                var lastStatement = statements.Last();
-                                if (lastStatement.Kind() == SyntaxKind.BreakStatement ||
-                                    lastStatement == innerStatement)
+                                if (parentBlockHasUnreachableEndPoint ||
+                                    innerStatement == (StatementSyntax)statements.Last())
                                 {
                                     return InvertIfStyle.WithBreakStatement;
                                 }
 
                                 return InvertIfStyle.None;
+
                             case SyntaxKind.LocalFunctionStatement:
+                            case SyntaxKind.SetAccessorDeclaration:
+                            case SyntaxKind.GetAccessorDeclaration:
+                            case SyntaxKind.AddAccessorDeclaration:
+                            case SyntaxKind.RemoveAccessorDeclaration:
+                            case SyntaxKind.MethodDeclaration:
+                            case SyntaxKind.ConstructorDeclaration:
+                            case SyntaxKind.DestructorDeclaration:
+                            case SyntaxKind.OperatorDeclaration:
+                            case SyntaxKind.ConversionOperatorDeclaration:
+                            case SyntaxKind.AnonymousMethodExpression:
+                            case SyntaxKind.SimpleLambdaExpression:
+                            case SyntaxKind.ParenthesizedLambdaExpression:
                                 return InvertIfStyle.WithReturnStatement;
+
                             case SyntaxKind.DoStatement:
                             case SyntaxKind.WhileStatement:
                             case SyntaxKind.ForStatement:
                             case SyntaxKind.ForEachStatement:
                             case SyntaxKind.ForEachVariableStatement:
                                 return InvertIfStyle.WithContinueStatement;
-                        }
-
-                        if (node is AccessorDeclarationSyntax ||
-                            node is BaseMethodDeclarationSyntax ||
-                            node is AnonymousFunctionExpressionSyntax)
-                        {
-                            return InvertIfStyle.WithReturnStatement;
                         }
                     }
 
@@ -313,7 +320,7 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
                 case SwitchSectionSyntax n:
                     return n.Statements;
                 default:
-                    throw ExceptionUtilities.UnexpectedValue(node.Kind());
+                    return default;
             }
         }
 
@@ -569,6 +576,10 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeRefactorings.InvertIf
             MoveSubsequentStatements,
             // invert and generete else
             WithElseClause,
+            // invert and generate else, keep if-body empty
+            WithElseClauseKeepIfBodyEmpty,
+            // invert and copy the exit point statement
+            WithExitPointStatement,
             // invert and generate return
             WithReturnStatement = SyntaxKind.ReturnStatement,
             // invert and generate continue
