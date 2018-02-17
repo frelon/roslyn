@@ -674,7 +674,7 @@ class C
         [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
         public async Task Test02()
         {
-            await TestInBothDirections(
+            await TestInRegularAndScriptAsync(
 @"class C
 {
     void M()
@@ -706,9 +706,43 @@ class C
         }
 
         [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
+        public async Task Test09()
+        {
+            await TestInRegularAndScriptAsync(
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            [||]if (c)
+            {
+                f();
+            }
+        }
+    }
+}",
+@"class C
+{
+    void M()
+    {
+        foreach (var item in list)
+        {
+            [||]if (!c)
+            {
+                continue;
+            }
+
+            f();
+        }
+    }
+}");
+        }
+
+        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
         public async Task Test03()
         {
-            await TestInBothDirections(
+            await TestInRegularAndScriptAsync(
 @"class C
 {
     void M()
@@ -738,7 +772,7 @@ class C
         [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
         public async Task Test04()
         {
-            await TestInBothDirections(
+            await TestInRegularAndScriptAsync(
 @"class C
 {
     void M()
@@ -770,43 +804,9 @@ class C
         }
 
         [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
-        public async Task Test05()
-        {
-            await TestInBothDirections(
-@"class C
-{
-    void M()
-    {
-        foreach (var item in list)
-        {
-            [||]if (true)
-            {
-                return;
-            }
-            M();
-        }
-    }
-}",
-@"class C
-{
-    void M()
-    {
-        foreach (var item in list)
-        {
-            [||]if (false)
-            {
-                M();
-            }
-            return;
-        }
-    }
-}");
-        }
-
-        [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
         public async Task Test06()
         {
-            await TestInBothDirections(
+            await TestInRegularAndScriptAsync(
 @"class C
 {
     void M()
@@ -844,7 +844,7 @@ class C
         [Fact, Trait(Traits.Feature, Traits.Features.CodeActionsInvertIf)]
         public async Task Test07()
         {
-            await TestInBothDirections(
+            await TestInRegularAndScriptAsync(
 @"class C
 {
     void M()
@@ -897,20 +897,15 @@ class C
             case 1:
                 [||]if (!c)
                 {
-                    break;
                 }
-
-                f();
+                else
+                {
+                    f();
+                }
                 break;
         }
     }
 }");
-        }
-
-        private async Task TestInBothDirections(string before, string after)
-        {
-            await TestAsync(before, after, default);
-            await TestAsync(after, before, default);
         }
     }
 }
